@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAtomValue, useSetAtom } from "jotai/react";
+import posthog from "posthog-js";
+import { dashboardLogger } from "@/lib/posthog-logger";
 import { ArrowLeft, ArrowRight, Camera, Circle, FileCode, Maximize, Moon, RotateCw, Smartphone, Square, Sun, Wifi, WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { execCommand, sessionArgs } from "@/lib/exec";
@@ -195,15 +197,18 @@ export function Viewport() {
     addressRef.current?.blur();
 
     const target = normalizeUrl(addressValue);
+    posthog.capture("browser_navigation_requested");
     const previousUrl = url;
     setAddressValue(target);
     setNavigating(true);
     try {
       const result = await runCmd("navigate", target);
       if (!result.success) {
+        dashboardLogger.warn("Browser navigation command failed");
         setAddressValue(previousUrl || "about:blank");
       }
     } catch {
+      dashboardLogger.warn("Browser navigation request failed");
       setAddressValue(previousUrl || "about:blank");
     } finally {
       setNavigating(false);
@@ -272,10 +277,12 @@ export function Viewport() {
     const path = recordPath.trim();
     if (!path) return;
     setRecordDialogOpen(false);
+    posthog.capture("browser_recording_started");
     await execCommand(sessionArgs(sessionName, "record", "start", path));
   }, [recordPath, sessionName]);
 
   const handleRecordStop = useCallback(async () => {
+    posthog.capture("browser_recording_stopped");
     await execCommand(sessionArgs(sessionName, "record", "stop"));
   }, [sessionName]);
 
@@ -465,7 +472,10 @@ export function Viewport() {
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    onClick={() => runCmd("snapshot")}
+                    onClick={() => {
+                      posthog.capture("browser_snapshot_requested");
+                      runCmd("snapshot");
+                    }}
                     className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
                     <FileCode className="size-4" />
@@ -477,7 +487,10 @@ export function Viewport() {
                 <TooltipTrigger asChild>
                   <button
                     type="button"
-                    onClick={() => runCmd("screenshot")}
+                    onClick={() => {
+                      posthog.capture("browser_screenshot_requested");
+                      runCmd("screenshot");
+                    }}
                     className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
                     <Camera className="size-4" />
