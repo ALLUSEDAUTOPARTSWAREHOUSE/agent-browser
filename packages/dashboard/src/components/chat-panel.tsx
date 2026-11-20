@@ -2,6 +2,8 @@
 
 import { useRef, useEffect, useState, useCallback, useMemo } from "react";
 import { useAtomValue } from "jotai/react";
+import posthog from "posthog-js";
+import { dashboardLogger } from "@/lib/posthog-logger";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport } from "ai";
 import { Streamdown } from "streamdown";
@@ -344,7 +346,10 @@ export function ChatPanel() {
   const { messages, sendMessage, stop, status, setMessages, error } = useChat({
     id: chatId,
     transport,
-    onError: () => setErrorDismissed(false),
+    onError: () => {
+      dashboardLogger.warn("Chat request failed", { selected_model: modelRef.current });
+      setErrorDismissed(false);
+    },
   });
 
   const visibleError = error && !errorDismissed ? error : undefined;
@@ -450,6 +455,11 @@ export function ChatPanel() {
       const dt = new DataTransfer();
       for (const img of pendingImages) dt.items.add(img.file);
       const files = dt.files.length > 0 ? dt.files : undefined;
+      posthog.capture("chat_message_sent", {
+        has_attachments: pendingImages.length > 0,
+        message_source: "composer",
+        model: selectedModel,
+      });
       sendMessage({ text: input, files });
       setInput("");
       setPendingImages((prev) => {
@@ -457,7 +467,7 @@ export function ChatPanel() {
         return [];
       });
     },
-    [input, isLoading, sendMessage, pendingImages],
+    [input, isLoading, sendMessage, pendingImages, selectedModel],
   );
 
   const lastCompactedId = useRef<string | null>(null);
@@ -491,6 +501,7 @@ export function ChatPanel() {
   }, [isLoading, messages, setMessages]);
 
   const handleClear = useCallback(() => {
+    posthog.capture("chat_conversation_cleared");
     setMessages([]);
     setErrorDismissed(true);
     localStorage.removeItem(storageKey);
@@ -498,6 +509,7 @@ export function ChatPanel() {
   }, [setMessages, storageKey]);
 
   const handleDownload = useCallback(() => {
+    posthog.capture("chat_conversation_downloaded");
     const data = messages.map((msg) => ({
       id: msg.id,
       role: msg.role,
@@ -567,7 +579,14 @@ export function ChatPanel() {
                   <button
                     key={s}
                     type="button"
-                    onClick={() => sendMessage({ text: s })}
+                    onClick={() => {
+                      posthog.capture("chat_message_sent", {
+                        has_attachments: false,
+                        message_source: "suggestion",
+                        model: selectedModel,
+                      });
+                      sendMessage({ text: s });
+                    }}
                     className="text-[10px] px-2 py-1 rounded-md border bg-secondary/50 text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
                   >
                     {s}

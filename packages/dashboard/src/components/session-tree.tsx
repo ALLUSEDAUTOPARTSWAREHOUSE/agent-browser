@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState, type SyntheticEvent } from "react";
 import { useAtom } from "jotai/react";
 import { useAtomValue, useSetAtom } from "jotai/react";
+import posthog from "posthog-js";
+import { dashboardLogger } from "@/lib/posthog-logger";
 import type { SessionInfo, TabInfo } from "@/types";
 import {
   sessionsAtom,
@@ -282,6 +284,7 @@ function SessionNode({
               variant="destructive"
               size="sm"
               onClick={() => {
+                posthog.capture("session_close_requested");
                 setConfirmClose(false);
                 onClose();
               }}
@@ -308,6 +311,7 @@ function SessionNode({
               variant="destructive"
               size="sm"
               onClick={() => {
+                posthog.capture("session_force_kill_requested");
                 setConfirmKill(false);
                 onKill();
               }}
@@ -334,7 +338,10 @@ function SessionNode({
             );
           })}
           <button
-            onClick={onAddTab}
+            onClick={() => {
+              posthog.capture("browser_tab_opened");
+              onAddTab();
+            }}
             className="flex w-full items-center gap-2 py-1 pr-1 pl-7 text-xs text-muted-foreground hover:text-foreground"
           >
             <Plus className="size-4" />
@@ -393,6 +400,16 @@ export function SessionTree() {
     if (error) {
       setCreateError(error);
     } else {
+      posthog.capture("session_created", {
+        session_type: option?.provider ? "provider" : "engine",
+        session_engine: option?.engine,
+        session_provider: option?.provider,
+      });
+      dashboardLogger.info("Browser session created", {
+        session_type: option?.provider ? "provider" : "engine",
+        session_engine: option?.engine,
+        session_provider: option?.provider,
+      });
       setNewSessionName("");
       setNewSessionOpen(false);
     }
@@ -458,7 +475,10 @@ export function SessionTree() {
                 expanded={isExpanded(s.port)}
                 onSelect={() => setActivePort(s.port)}
                 onToggle={() => toggleExpanded(s.port)}
-                onCloseTab={(tabRef) => dispatchCloseTab({ port: s.port, tabRef })}
+                onCloseTab={(tabRef) => {
+                  posthog.capture("browser_tab_closed");
+                  dispatchCloseTab({ port: s.port, tabRef });
+                }}
                 onAddTab={() => dispatchAddTab(s.port)}
                 onSwitchTab={(tabRef) => dispatchSwitchTab({ port: s.port, tabRef })}
                 onClose={() => dispatchCloseSession(s.port)}
@@ -561,6 +581,7 @@ export function SessionTree() {
               variant="destructive"
               size="sm"
               onClick={() => {
+                posthog.capture("all_sessions_close_requested");
                 setCloseAllOpen(false);
                 dispatchCloseAllSessions();
               }}
